@@ -70,3 +70,18 @@ SecretShield centralizes credential management and outbound traffic routing.
 - Master key isolation: The vault master key (`SECRETSHIELD_MASTER_KEY`) must be supplied through environment variable or KMS (such as AWS KMS, GCP KMS, or HashiCorp Vault). It is never stored on disk.
 - Plaintext memory lifetime: Secrets are decrypted only in memory during request construction and discarded immediately afterward.
 - Audit log tampering: Because each audit record includes the SHA-256 hash of the preceding record, unauthorized modifications or deletions break the hash chain and trigger validation errors during verification.
+
+## Two-Stage Defense Architecture
+
+SecretShield implements defense-in-depth across two distinct development stages:
+
+1. **Pre-Production (Shift-Left CI Gating)**:
+   - Command: `secretshield scan [PATH]` & GitHub Action (`alexandrmotologa/secretshield@v1`).
+   - Analyzes source code and git pull request diffs for exposed credentials (API keys, private keys, database connection strings, and high-entropy secrets).
+   - Blocks non-compliant pull requests before they reach the main repository branch.
+   - Outputs actionable remediation guidance directing engineers to register keys in SecretShield Vault.
+
+2. **Production (Zero-Trust Runtime Proxy)**:
+   - Centralized outbound proxy handling dynamic credential injection, RBAC enforcement, budget quotas, and DLP response masking.
+   - Prevents credential sprawl by eliminating long-lived credentials from microservice runtime environments entirely.
+

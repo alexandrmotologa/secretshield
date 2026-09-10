@@ -222,6 +222,7 @@ Inspect and cryptographically verify the SHA-256 hash-chained ledger:
 Detailed architectural documentation is available in the `docs/` directory:
 
 - [Architecture and Threat Model](docs/architecture.md)
+- [Shift-Left Scanner & CI Gating](docs/scanner-and-ci.md)
 - [Vault and Envelope Encryption](docs/vault-and-encryption.md)
 - [Policy and Budget Enforcement](docs/policy-and-budgets.md)
 - [Secret Redaction Engine](docs/redactor.md)

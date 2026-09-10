@@ -24,3 +24,8 @@ The redactor runs in streaming pipelines with three validation stages:
 ## Performance characteristics
 
 The redactor uses pre-compiled regular expressions and skips binary payloads (such as images, PDFs, or gzip-encoded content without Content-Type text/json). It processes standard JSON response bodies in under 0.5 milliseconds.
+
+## Shared Core with Shift-Left Scanner
+
+The pattern recognition algorithms and Shannon entropy calculations defined in the redactor are also utilized by the `secretshield scan` engine. This ensures consistent detection logic between pre-commit static analysis and runtime traffic inspection. See [Shift-Left Scanner Documentation](scanner-and-ci.md) for full details.
+
