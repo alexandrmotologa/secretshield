@@ -1,0 +1,57 @@
+name: 'SecretShield Secret Scanner'
+description: 'Detect and block hardcoded API keys and credentials in CI before merge.'
+author: 'Alexandr Motologa'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Path to file or directory to scan'
+    required: false
+    default: '.'
+  against:
+    description: 'Git branch or reference to compare against (e.g. origin/main) for scanning modified files only'
+    required: false
+  entropy:
+    description: 'Enable Shannon entropy checks for high-entropy tokens'
+    required: false
+    default: 'true'
+  fail-on-findings:
+    description: 'Exit with non-zero status code if hardcoded secrets are detected'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install SecretShield
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "$GITHUB_ACTION_PATH"
+
+    - name: Run SecretShield Repository Scanner
+      shell: bash
+      run: |
+        CMD="secretshield scan '${{ inputs.path }}' --format github --output '${GITHUB_STEP_SUMMARY:-/dev/stdout}'"
+        
+        if [ -n "${{ inputs.against }}" ]; then
+          CMD="$CMD --against '${{ inputs.against }}'"
+        fi
+
+        if [ "${{ inputs.entropy }}" = "false" ]; then
+          CMD="$CMD --no-entropy"
+        fi
+
+        if [ "${{ inputs.fail-on-findings }}" = "false" ]; then
+          CMD="$CMD --no-fail"
+        fi
+
+        eval $CMD

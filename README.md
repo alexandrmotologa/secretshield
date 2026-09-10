@@ -43,6 +43,8 @@ SecretShield sits between internal services and external APIs. Services make req
 - **Inbound data loss prevention (DLP)**: Inspects inbound request payloads for credit cards, SSNs, and private tokens in `AUDIT`, `MASK`, or `BLOCK` modes before forwarding upstream.
 - **Deterministic response cache**: Caches idempotent upstream responses in memory with SHA-256 canonical request keys to cut latency and API provider costs.
 - **High-speed secret redactor**: Masks credit card numbers verified with the Luhn algorithm, API keys, and high-entropy strings from audit logs.
+- **Shift-Left repository scanner**: Detects hardcoded credentials, API keys, and high-entropy secrets in source code and PR diffs with actionable SecretShield remediation hints.
+- **Standalone GitHub Action**: Reusable CI workflow (`alexandrmotologa/secretshield@v1`) with native GitHub Step Summary and PR annotations to block unencrypted credentials.
 - **Hash-chained audit log**: Records request and response metadata into an append-only SQLite ledger where each entry links cryptographically to the previous one.
 - **Real-time webhook alerts**: Dispatches instant notifications to Slack, Discord, or generic webhooks when budgets exceed thresholds or circuit breakers trip.
 - **Prometheus exporter**: Exposes standard `/metrics` endpoint with counters for requests, latencies, cache hit ratios, and budget spending.
@@ -145,6 +147,59 @@ Export and import encrypted portable vault snapshots:
 ```bash
 secretshield vault export --output-file backup.json --passphrase "StrongBackupPassphrase123"
 secretshield vault import --input-file backup.json --passphrase "StrongBackupPassphrase123"
+```
+
+## Shift-Left Repository Scanner
+
+Prevent accidental credential leaks before they reach production. The built-in static scanner checks repositories, modified files, and git pull requests for exposed API keys, private keys, database passwords, and high-entropy secrets.
+
+### CLI Usage
+
+Scan the entire repository:
+
+```bash
+secretshield scan .
+```
+
+Scan only modified files against the base branch in CI:
+
+```bash
+secretshield scan . --against origin/main --format table
+```
+
+Supported output formats:
+- `table` (default): Formatted Rich console table with masked secrets and remediation commands.
+- `json`: Machine-readable JSON output for automated reporting.
+- `github`: Markdown table formatted for `$GITHUB_STEP_SUMMARY` plus workflow error annotations.
+
+### GitHub Action Integration
+
+Add SecretShield to `.github/workflows/security.yml` to block pull requests containing raw secrets:
+
+```yaml
+name: Security Audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    name: SecretShield Hardcoded Secret Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan Repository for Secrets
+        uses: alexandrmotologa/secretshield@v1
+        with:
+          against: origin/main
+          fail-on-findings: 'true'
 ```
 
 ## Web Dashboard and Telemetry

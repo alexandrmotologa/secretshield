@@ -335,5 +335,110 @@ def cache_clear():
         console.print("[yellow]Cache not active in CLI process.[/yellow]")
 
 
+@app.command("scan")
+def scan_command(
+    path: Path = typer.Argument(
+        Path("."),
+        help="Path to file or directory to scan for hardcoded secrets",
+    ),
+    against: str | None = typer.Option(
+        None,
+        "--against",
+        "-a",
+        help="Git branch or ref to compare against (e.g. origin/main) for scanning git diff only",
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format: table, json, or github",
+    ),
+    entropy: bool = typer.Option(
+        True,
+        "--entropy/--no-entropy",
+        help="Enable Shannon entropy checks for high-entropy tokens",
+    ),
+    ignore_path: list[str] = typer.Option(
+        None,
+        "--ignore-path",
+        "-i",
+        help="Additional paths or substrings to ignore",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Path to write the report output to (e.g. $GITHUB_STEP_SUMMARY)",
+    ),
+    fail_on_findings: bool = typer.Option(
+        True,
+        "--fail-on-findings/--no-fail",
+        help="Exit with non-zero status code if hardcoded secrets are detected",
+    ),
+):
+    """Scan repositories, files, or git diffs for hardcoded secrets and API keys."""
+    from secretshield.scanner.engine import ScanSummary, SecretScanner
+
+    scanner = SecretScanner(
+        check_entropy=entropy,
+        custom_ignore_patterns=ignore_path or [],
+    )
+
+    if against:
+        summary = scanner.scan_git_diff(path if path.is_dir() else path.parent, against=against)
+    elif path.is_file():
+        findings = scanner.scan_file(path)
+        summary = ScanSummary(
+            scanned_files_count=1,
+            scanned_lines_count=len(path.read_text(encoding="utf-8", errors="replace").splitlines()) if path.exists() else 0,
+            findings=findings,
+        )
+    else:
+        summary = scanner.scan_directory(path)
+
+    # Format output
+    fmt = format.lower().strip()
+    if fmt == "json":
+        json_output = summary.to_json()
+        if output:
+            output.write_text(json_output, encoding="utf-8")
+        else:
+            print(json_output)
+    elif fmt == "github":
+        md_output = summary.to_github_markdown()
+        annotations = summary.to_github_annotations()
+        full_content = md_output
+        if output:
+            output.write_text(full_content, encoding="utf-8")
+        else:
+            print(full_content)
+        # Print annotations for GitHub Actions runner log
+        for ann in annotations:
+            print(ann)
+    else:
+        # Default Rich table
+        if summary.has_findings:
+            console.print(summary.to_rich_table())
+            console.print(
+                f"[bold red]❌ Found {len(summary.findings)} potential secret(s) "
+                f"({summary.critical_count} CRITICAL, {summary.high_count} HIGH)![/bold red]"
+            )
+            console.print(
+                "[dim]Tip: Move credentials to SecretShield Vault using `secretshield vault set <profile>`.[/dim]\n"
+            )
+        else:
+            console.print(
+                f"[bold green]✓ No secrets detected in {summary.scanned_files_count} scanned file(s).[/bold green]"
+            )
+
+        if output:
+            output.write_text(summary.to_github_markdown(), encoding="utf-8")
+
+    if summary.has_findings and fail_on_findings:
+        raise typer.Exit(code=1)
+    raise typer.Exit(code=0)
+
+
 if __name__ == "__main__":
     app()
+
