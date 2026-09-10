@@ -22,12 +22,18 @@ SecretShield sits between internal services and external APIs. Services make req
 
 - **Encrypted credential vault**: Stores API secrets encrypted with AES-256-GCM envelope encryption using keys derived via HKDF.
 - **Dynamic credential injection**: Automatically injects Bearer tokens, custom HTTP headers, or Basic auth into outbound requests without the caller handling the keys.
+- **Transparent forward proxy mode**: Supports standard `HTTP_PROXY` configuration, resolving destination credentials automatically by request `Host` header.
 - **Zero-Trust caller authentication**: Validates microservices using short-lived HMAC tokens or pre-shared service IDs.
 - **RBAC policy enforcement**: Restricts which services can call specific upstream profiles and HTTP methods.
 - **Financial budget limiter**: Tracks spending per service and blocks requests with HTTP 429 when hourly or daily quotas are exceeded.
-- **High-speed secret redactor**: Masks credit card numbers verified with the Luhn algorithm, API keys, and high-entropy strings from logs.
+- **Inbound data loss prevention (DLP)**: Inspects inbound request payloads for credit cards, SSNs, and private tokens in `AUDIT`, `MASK`, or `BLOCK` modes before forwarding upstream.
+- **Deterministic response cache**: Caches idempotent upstream responses in memory with SHA-256 canonical request keys to cut latency and API provider costs.
+- **High-speed secret redactor**: Masks credit card numbers verified with the Luhn algorithm, API keys, and high-entropy strings from audit logs.
 - **Hash-chained audit log**: Records request and response metadata into an append-only SQLite ledger where each entry links cryptographically to the previous one.
-- **Terminal UI**: Displays real-time request rates, latency, budget consumption, and blocked request alerts.
+- **Real-time webhook alerts**: Dispatches instant notifications to Slack, Discord, or generic webhooks when budgets exceed thresholds or circuit breakers trip.
+- **Prometheus exporter**: Exposes standard `/metrics` endpoint with counters for requests, latencies, cache hit ratios, and budget spending.
+- **Web and terminal dashboards**: Provides both a responsive dark-mode browser console at `/ui/` and an interactive terminal UI.
+- **Zero-downtime rotation and portable backups**: Supports blue-green key rotation (`vault rotate`) and encrypted passphrase-protected exports (`vault export`/`vault import`).
 
 ## Quickstart
 
@@ -60,7 +66,7 @@ secretshield vault set stripe \
   --base-url "https://api.stripe.com" \
   --header-name "Authorization" \
   --header-prefix "Bearer " \
-  --secret "sk_live_test_secret_key"
+  --secret "sk_test_mock_secret_key"
 ```
 
 ### 3. Define an access policy and budget
@@ -95,6 +101,37 @@ curl -X POST http://localhost:8000/proxy/stripe/v1/charges \
 ```
 
 SecretShield validates the token, verifies budget, injects the real Stripe key, forwards the request, logs the event with card numbers redacted, and returns the response.
+
+### 6. Transparent proxy mode (HTTP_PROXY)
+
+Configure client HTTP libraries to route traffic transparently through SecretShield:
+
+```bash
+export HTTP_PROXY="http://localhost:8000"
+curl -x http://localhost:8000 https://api.stripe.com/v1/charges \
+  -H "X-Service-Id: order-service" \
+  -H "X-Service-Token: <service-token>"
+```
+
+### 7. Web dashboard and metrics
+
+- Open `http://localhost:8000/ui/` for the real-time web dashboard.
+- Scrape `http://localhost:8000/metrics` for Prometheus metrics.
+
+### 8. Key rotation and backups
+
+Perform zero-downtime blue-green secret rotation:
+
+```bash
+secretshield vault rotate stripe --secret "sk_test_new_secret_key"
+```
+
+Export and import encrypted portable vault snapshots:
+
+```bash
+secretshield vault export --output-file backup.json --passphrase "StrongBackupPassphrase123"
+secretshield vault import --input-file backup.json --passphrase "StrongBackupPassphrase123"
+```
 
 ## Architecture
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+from pathlib import Path
 
 import typer
 import uvicorn
@@ -13,6 +14,7 @@ from secretshield.audit.verifier import AuditChainVerifier
 from secretshield.config import settings
 from secretshield.policy.authenticator import TokenAuthenticator
 from secretshield.vault.cipher import VaultCipher
+from secretshield.vault.migration import VaultMigration
 from secretshield.vault.store import InjectionType, VaultStore
 
 app = typer.Typer(
@@ -24,10 +26,12 @@ app = typer.Typer(
 vault_app = typer.Typer(name="vault", help="Manage encrypted credential profiles")
 token_app = typer.Typer(name="token", help="Issue and manage internal service tokens")
 audit_app = typer.Typer(name="audit", help="Inspect and verify the hash-chained audit ledger")
+cache_app = typer.Typer(name="cache", help="Inspect and purge deterministic response cache")
 
 app.add_typer(vault_app)
 app.add_typer(token_app)
 app.add_typer(audit_app)
+app.add_typer(cache_app)
 
 console = Console()
 
@@ -52,7 +56,6 @@ def run(
 
         from secretshield.tui.app import run_dashboard
 
-        # Start uvicorn server in child process
         server_process = multiprocessing.Process(
             target=uvicorn.run,
             args=("secretshield.server:app",),
@@ -72,9 +75,25 @@ def run(
         console.print(
             f"[bold cyan]🛡️ Starting SecretShield proxy on http://{host}:{port}[/bold cyan]"
         )
+        console.print(f"[dim]Web Control Plane available at http://{host}:{port}/ui[/dim]")
         uvicorn.run(
             "secretshield.server:app", host=host, port=port, log_level=settings.log_level.lower()
         )
+
+
+@app.command("ui")
+def open_ui(
+    host: str = typer.Option(settings.host, help="Host address"),
+    port: int = typer.Option(settings.port, help="Port number"),
+):
+    """Print the Web Dashboard URL and open in browser."""
+    url = f"http://{host}:{port}/ui"
+    console.print(
+        f"[bold green]🌐 SecretShield Web Dashboard:[/bold green] [underline cyan]{url}[/underline cyan]"
+    )
+    import webbrowser
+
+    webbrowser.open(url)
 
 
 @vault_app.command("set")
@@ -82,6 +101,9 @@ def vault_set(
     name: str = typer.Argument(..., help="Unique profile name (e.g. 'stripe', 'openai')"),
     base_url: str = typer.Option(..., "--base-url", "-u", help="Upstream API base URL"),
     secret: str = typer.Option(..., "--secret", "-s", help="Plaintext secret to encrypt and store"),
+    domains: str | None = typer.Option(
+        None, "--domains", "-d", help="Comma-separated domains for transparent proxying"
+    ),
     injection_type: InjectionType = typer.Option(
         InjectionType.BEARER, "--type", "-t", help="Injection type: bearer, header, basic, query"
     ),
@@ -97,36 +119,96 @@ def vault_set(
 ):
     """Encrypt and store an upstream API secret profile."""
     store = get_vault_store()
+    domain_list = [d.strip() for d in domains.split(",")] if domains else None
 
     async def _do_set():
-        profile = await store.set_profile(
+        return await store.set_profile(
             name=name,
             base_url=base_url,
             secret=secret,
+            domains=domain_list,
             injection_type=injection_type,
             header_name=header_name,
             header_prefix=header_prefix,
             query_param=query_param,
         )
-        return profile
 
     profile = asyncio.run(_do_set())
     console.print(
         f"[green]✓ Profile '{profile.name}' stored successfully with AES-256-GCM encryption![/green]"
     )
     console.print(f"  Target: {profile.base_url}")
-    console.print(f"  Injection: {profile.injection_type.value} -> {profile.header_name}")
+    if profile.domains:
+        console.print(f"  Domains: {', '.join(profile.domains)}")
+
+
+@vault_app.command("rotate")
+def vault_rotate(
+    name: str = typer.Argument(..., help="Profile name to rotate"),
+    secret: str = typer.Option(..., "--secret", "-s", help="New plaintext secret"),
+):
+    """Rotate secret with zero downtime, preserving previous secret for fallback."""
+    store = get_vault_store()
+
+    async def _do_rotate():
+        return await store.rotate_secret(name, secret)
+
+    try:
+        profile = asyncio.run(_do_rotate())
+        console.print(
+            f"[bold green]✓ Secret for '{name}' rotated to v{profile.version}![/bold green]"
+        )
+        console.print("[dim]Previous key retained in vault as fallback during transition.[/dim]")
+    except Exception as exc:
+        console.print(f"[bold red]Error rotating secret:[/bold red] {exc}")
+        sys.exit(1)
+
+
+@vault_app.command("export")
+def vault_export(
+    output: Path = typer.Option(
+        Path("./vault-backup.enc"), "--output", "-o", help="Backup file destination"
+    ),
+    passphrase: str = typer.Option(
+        ..., "--passphrase", "-p", prompt=True, hide_input=True, help="Backup password"
+    ),
+):
+    """Export encrypted vault backup archive."""
+    store = get_vault_store()
+    try:
+        count = asyncio.run(VaultMigration.export_vault(store, passphrase, output))
+        console.print(
+            f"[bold green]✓ Exported {count} profile(s) to encrypted backup file '{output}'![/bold green]"
+        )
+    except Exception as exc:
+        console.print(f"[bold red]Export failed:[/bold red] {exc}")
+        sys.exit(1)
+
+
+@vault_app.command("import")
+def vault_import(
+    input_file: Path = typer.Option(..., "--input", "-i", help="Backup file to import"),
+    passphrase: str = typer.Option(
+        ..., "--passphrase", "-p", prompt=True, hide_input=True, help="Backup password"
+    ),
+):
+    """Decrypt and import profiles from encrypted backup archive."""
+    store = get_vault_store()
+    try:
+        count = asyncio.run(VaultMigration.import_vault(store, passphrase, input_file))
+        console.print(
+            f"[bold green]✓ Successfully imported {count} profile(s) into vault![/bold green]"
+        )
+    except Exception as exc:
+        console.print(f"[bold red]Import failed:[/bold red] {exc}")
+        sys.exit(1)
 
 
 @vault_app.command("list")
 def vault_list():
     """List all stored credential profiles with masked secrets."""
     store = get_vault_store()
-
-    async def _do_list():
-        return await store.list_profiles()
-
-    profiles = asyncio.run(_do_list())
+    profiles = asyncio.run(store.list_profiles())
     if not profiles:
         console.print(
             "[yellow]No credential profiles stored yet. Run 'secretshield vault set' to add one.[/yellow]"
@@ -136,19 +218,15 @@ def vault_list():
     table = Table(title="Encrypted Credential Profiles", border_style="cyan")
     table.add_column("Name", style="bold white")
     table.add_column("Base URL", style="cyan")
+    table.add_column("Version", justify="center")
     table.add_column("Type", style="magenta")
-    table.add_column("Header / Param")
     table.add_column("Secret Preview", style="green")
-    table.add_column("Updated At", style="dim")
+    table.add_column("Backup Key", justify="center")
 
     for p in profiles:
-        hp = (
-            f"{p.header_name} ({p.header_prefix})"
-            if p.injection_type != InjectionType.QUERY
-            else f"?{p.query_param}="
-        )
+        has_bak = "[green]YES[/green]" if p.has_backup_key else "[dim]NO[/dim]"
         table.add_row(
-            p.name, p.base_url, p.injection_type.value, hp, p.secret_preview, p.updated_at[:19]
+            p.name, p.base_url, f"v{p.version}", p.injection_type.value, p.secret_preview, has_bak
         )
 
     console.print(table)
@@ -158,11 +236,7 @@ def vault_list():
 def vault_delete(name: str = typer.Argument(..., help="Profile name to remove")):
     """Delete a profile from the encrypted vault."""
     store = get_vault_store()
-
-    async def _do_del():
-        return await store.delete_profile(name)
-
-    deleted = asyncio.run(_do_del())
+    deleted = asyncio.run(store.delete_profile(name))
     if deleted:
         console.print(f"[green]✓ Profile '{name}' removed from vault.[/green]")
     else:
@@ -184,11 +258,7 @@ def token_issue(
 
     console.print(f"[bold green]✓ JWT issued for service: [white]{service_id}[/white][/bold green]")
     console.print(f"[cyan]TTL:[/cyan] {ttl_hours} hours | [cyan]Scopes:[/cyan] {scope_list}")
-    console.print("\n[bold]Token:[/bold]")
-    console.print(f"[yellow]{token}[/yellow]\n")
-    console.print("Pass this token in HTTP requests using header:")
-    console.print(f"[dim]X-Service-Id: {service_id}[/dim]")
-    console.print(f"[dim]X-Service-Token: {token}[/dim]")
+    console.print(f"\n[bold]Token (use in X-Service-Token header):[/bold]\n[yellow]{token}[/yellow]\n")
 
 
 @audit_app.command("verify")
@@ -225,7 +295,6 @@ def audit_tail(limit: int = typer.Option(20, "--limit", "-n", help="Number of re
     table.add_column("Target", style="cyan")
     table.add_column("Method", width=6)
     table.add_column("Status", width=6, justify="center")
-    table.add_column("Latency", width=10, justify="right")
     table.add_column("Cost", width=10, justify="right")
     table.add_column("Hash", width=10, style="dim")
 
@@ -240,12 +309,23 @@ def audit_tail(limit: int = typer.Option(20, "--limit", "-n", help="Number of re
             f"{r.profile_name}{r.path}",
             r.method,
             f"[{status_style}]{r.status_code}[/{status_style}]",
-            f"{r.latency_ms:.1f}ms",
             f"${r.cost_usd:.4f}",
             r.record_hash[:8] + "...",
         )
 
     console.print(table)
+
+
+@cache_app.command("clear")
+def cache_clear():
+    """Clear in-memory response cache."""
+    from secretshield.server import state
+
+    if hasattr(state, "cache"):
+        purged = state.cache.clear()
+        console.print(f"[green]✓ Purged {purged} entries from response cache.[/green]")
+    else:
+        console.print("[yellow]Cache not active in CLI process.[/yellow]")
 
 
 if __name__ == "__main__":

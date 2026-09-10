@@ -1,10 +1,11 @@
-"""SQLite-backed encrypted credential profile repository."""
+"""SQLite-backed encrypted credential profile repository with rotation and host resolution."""
 
 import json
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import aiosqlite
 from pydantic import BaseModel, Field
@@ -26,11 +27,14 @@ class CredentialProfile(BaseModel):
 
     name: str
     base_url: str
+    domains: list[str] = Field(default_factory=list)
+    version: int = 1
     injection_type: InjectionType = InjectionType.BEARER
     header_name: str = "Authorization"
     header_prefix: str = "Bearer "
     query_param: str | None = None
     encrypted_secret: bytes
+    previous_encrypted_secret: bytes | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str
     updated_at: str
@@ -41,11 +45,14 @@ class ProfileView(BaseModel):
 
     name: str
     base_url: str
+    domains: list[str] = Field(default_factory=list)
+    version: int = 1
     injection_type: InjectionType
     header_name: str
     header_prefix: str
     query_param: str | None = None
     secret_preview: str
+    has_backup_key: bool = False
     created_at: str
     updated_at: str
 
@@ -67,7 +74,7 @@ class VaultStore:
         self.cipher = cipher
 
     async def init_db(self) -> None:
-        """Create vault tables if they do not exist."""
+        """Create vault tables if they do not exist and ensure schema migrations."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -75,17 +82,37 @@ class VaultStore:
                 CREATE TABLE IF NOT EXISTS vault_profiles (
                     name TEXT PRIMARY KEY,
                     base_url TEXT NOT NULL,
+                    domains TEXT NOT NULL DEFAULT '[]',
+                    version INTEGER NOT NULL DEFAULT 1,
                     injection_type TEXT NOT NULL,
                     header_name TEXT NOT NULL,
                     header_prefix TEXT NOT NULL,
                     query_param TEXT,
                     encrypted_secret BLOB NOT NULL,
+                    previous_encrypted_secret BLOB,
                     metadata TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            # Check for existing table schema to migrate columns if needed
+            async with db.execute("PRAGMA table_info(vault_profiles)") as cursor:
+                columns = [row[1] for row in await cursor.fetchall()]
+
+            if "domains" not in columns:
+                await db.execute(
+                    "ALTER TABLE vault_profiles ADD COLUMN domains TEXT NOT NULL DEFAULT '[]'"
+                )
+            if "version" not in columns:
+                await db.execute(
+                    "ALTER TABLE vault_profiles ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                )
+            if "previous_encrypted_secret" not in columns:
+                await db.execute(
+                    "ALTER TABLE vault_profiles ADD COLUMN previous_encrypted_secret BLOB"
+                )
+
             await db.commit()
 
     async def set_profile(
@@ -93,48 +120,42 @@ class VaultStore:
         name: str,
         base_url: str,
         secret: str,
+        domains: list[str] | None = None,
         injection_type: InjectionType = InjectionType.BEARER,
         header_name: str = "Authorization",
         header_prefix: str = "Bearer ",
         query_param: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> CredentialProfile:
-        """Store or update an encrypted profile.
-
-        Args:
-            name: Unique profile name (e.g. 'stripe-prod', 'openai').
-            base_url: The target API base URL (e.g. 'https://api.stripe.com').
-            secret: The plaintext secret to encrypt and store.
-            injection_type: Type of credential injection.
-            header_name: HTTP header to inject into.
-            header_prefix: Prefix preceding the secret in the header.
-            query_param: Optional query parameter name if injection_type is QUERY.
-            metadata: Additional metadata dictionary.
-
-        Returns:
-            The stored CredentialProfile object.
-        """
+        """Store or update an encrypted profile."""
         await self.init_db()
         now = datetime.now(UTC).isoformat()
         encrypted_secret = self.cipher.encrypt(secret, context=name)
         meta_json = json.dumps(metadata or {})
 
+        # Default domain from base_url if not provided
+        parsed_host = urlparse(base_url).hostname
+        final_domains = domains if domains is not None else ([parsed_host] if parsed_host else [])
+        domains_json = json.dumps(final_domains)
+
         async with aiosqlite.connect(self.db_path) as db:
-            # Check if profile already exists to preserve created_at
             async with db.execute(
-                "SELECT created_at FROM vault_profiles WHERE name = ?", (name,)
+                "SELECT created_at, version, encrypted_secret FROM vault_profiles WHERE name = ?",
+                (name,),
             ) as cursor:
                 row = await cursor.fetchone()
                 created_at = row[0] if row else now
+                version = row[1] if row else 1
 
             await db.execute(
                 """
                 INSERT INTO vault_profiles (
-                    name, base_url, injection_type, header_name, header_prefix,
-                    query_param, encrypted_secret, metadata, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    name, base_url, domains, version, injection_type, header_name, header_prefix,
+                    query_param, encrypted_secret, previous_encrypted_secret, metadata, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     base_url = excluded.base_url,
+                    domains = excluded.domains,
                     injection_type = excluded.injection_type,
                     header_name = excluded.header_name,
                     header_prefix = excluded.header_prefix,
@@ -146,6 +167,8 @@ class VaultStore:
                 (
                     name,
                     base_url.rstrip("/"),
+                    domains_json,
+                    version,
                     injection_type.value,
                     header_name,
                     header_prefix,
@@ -161,6 +184,8 @@ class VaultStore:
         return CredentialProfile(
             name=name,
             base_url=base_url.rstrip("/"),
+            domains=final_domains,
+            version=version,
             injection_type=injection_type,
             header_name=header_name,
             header_prefix=header_prefix,
@@ -171,6 +196,38 @@ class VaultStore:
             updated_at=now,
         )
 
+    async def rotate_secret(self, name: str, new_secret: str) -> CredentialProfile:
+        """Perform Blue-Green rotation of secret, keeping previous secret as fallback."""
+        profile = await self.get_profile(name)
+        if not profile:
+            raise ValueError(f"Cannot rotate secret: profile '{name}' not found")
+
+        await self.init_db()
+        now = datetime.now(UTC).isoformat()
+        new_encrypted = self.cipher.encrypt(new_secret, context=name)
+        old_encrypted = profile.encrypted_secret
+        new_version = profile.version + 1
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE vault_profiles SET
+                    encrypted_secret = ?,
+                    previous_encrypted_secret = ?,
+                    version = ?,
+                    updated_at = ?
+                WHERE name = ?
+                """,
+                (new_encrypted, old_encrypted, new_version, now, name),
+            )
+            await db.commit()
+
+        profile.encrypted_secret = new_encrypted
+        profile.previous_encrypted_secret = old_encrypted
+        profile.version = new_version
+        profile.updated_at = now
+        return profile
+
     async def get_profile(self, name: str) -> CredentialProfile | None:
         """Fetch a credential profile by name."""
         await self.init_db()
@@ -178,8 +235,8 @@ class VaultStore:
             aiosqlite.connect(self.db_path) as db,
             db.execute(
                 """
-                SELECT name, base_url, injection_type, header_name, header_prefix,
-                       query_param, encrypted_secret, metadata, created_at, updated_at
+                SELECT name, base_url, domains, version, injection_type, header_name, header_prefix,
+                       query_param, encrypted_secret, previous_encrypted_secret, metadata, created_at, updated_at
                 FROM vault_profiles WHERE name = ?
                 """,
                 (name,),
@@ -192,15 +249,70 @@ class VaultStore:
             return CredentialProfile(
                 name=row[0],
                 base_url=row[1],
-                injection_type=InjectionType(row[2]),
-                header_name=row[3],
-                header_prefix=row[4],
-                query_param=row[5],
-                encrypted_secret=row[6],
-                metadata=json.loads(row[7]),
-                created_at=row[8],
-                updated_at=row[9],
+                domains=json.loads(row[2]) if row[2] else [],
+                version=row[3],
+                injection_type=InjectionType(row[4]),
+                header_name=row[5],
+                header_prefix=row[6],
+                query_param=row[7],
+                encrypted_secret=row[8],
+                previous_encrypted_secret=row[9],
+                metadata=json.loads(row[10]),
+                created_at=row[11],
+                updated_at=row[12],
             )
+
+    async def get_profile_by_host(self, host: str) -> CredentialProfile | None:
+        """Resolve a credential profile by target hostname for transparent forward proxying."""
+        await self.init_db()
+        clean_host = host.split(":")[0].lower()
+
+        profiles = await self.get_all_profiles()
+        for p in profiles:
+            # Check domains list
+            for d in p.domains:
+                if d.lower() == clean_host:
+                    return p
+            # Check hostname of base_url
+            base_host = urlparse(p.base_url).hostname
+            if base_host and base_host.lower() == clean_host:
+                return p
+        return None
+
+    async def get_all_profiles(self) -> list[CredentialProfile]:
+        """Fetch all raw profile models."""
+        await self.init_db()
+        results: list[CredentialProfile] = []
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute(
+                """
+                SELECT name, base_url, domains, version, injection_type, header_name, header_prefix,
+                       query_param, encrypted_secret, previous_encrypted_secret, metadata, created_at, updated_at
+                FROM vault_profiles
+                """
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
+            for row in rows:
+                results.append(
+                    CredentialProfile(
+                        name=row[0],
+                        base_url=row[1],
+                        domains=json.loads(row[2]) if row[2] else [],
+                        version=row[3],
+                        injection_type=InjectionType(row[4]),
+                        header_name=row[5],
+                        header_prefix=row[6],
+                        query_param=row[7],
+                        encrypted_secret=row[8],
+                        previous_encrypted_secret=row[9],
+                        metadata=json.loads(row[10]),
+                        created_at=row[11],
+                        updated_at=row[12],
+                    )
+                )
+        return results
 
     async def get_decrypted_secret(self, name: str) -> str | None:
         """Fetch and decrypt the secret for a profile."""
@@ -210,42 +322,33 @@ class VaultStore:
         return self.cipher.decrypt(profile.encrypted_secret, context=name)
 
     async def list_profiles(self) -> list[ProfileView]:
-        """List all profiles with masked secret previews."""
+        """List all profiles with masked secret previews and version info."""
         await self.init_db()
         results: list[ProfileView] = []
-        async with (
-            aiosqlite.connect(self.db_path) as db,
-            db.execute(
-                """
-                SELECT name, base_url, injection_type, header_name, header_prefix,
-                       query_param, encrypted_secret, created_at, updated_at
-                FROM vault_profiles ORDER BY name ASC
-                """
-            ) as cursor,
-        ):
-            rows = await cursor.fetchall()
-            for row in rows:
-                name = row[0]
-                encrypted = row[6]
-                try:
-                    secret = self.cipher.decrypt(encrypted, context=name)
-                    preview = mask_secret(secret)
-                except Exception:
-                    preview = "[decryption_error]"
+        profiles = await self.get_all_profiles()
+        for p in sorted(profiles, key=lambda x: x.name):
+            try:
+                secret = self.cipher.decrypt(p.encrypted_secret, context=p.name)
+                preview = mask_secret(secret)
+            except Exception:
+                preview = "[decryption_error]"
 
-                results.append(
-                    ProfileView(
-                        name=name,
-                        base_url=row[1],
-                        injection_type=InjectionType(row[2]),
-                        header_name=row[3],
-                        header_prefix=row[4],
-                        query_param=row[5],
-                        secret_preview=preview,
-                        created_at=row[7],
-                        updated_at=row[8],
-                    )
+            results.append(
+                ProfileView(
+                    name=p.name,
+                    base_url=p.base_url,
+                    domains=p.domains,
+                    version=p.version,
+                    injection_type=p.injection_type,
+                    header_name=p.header_name,
+                    header_prefix=p.header_prefix,
+                    query_param=p.query_param,
+                    secret_preview=preview,
+                    has_backup_key=p.previous_encrypted_secret is not None,
+                    created_at=p.created_at,
+                    updated_at=p.updated_at,
                 )
+            )
         return results
 
     async def delete_profile(self, name: str) -> bool:

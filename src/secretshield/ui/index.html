@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecretShield — Zero-Trust Credential Broker & Outbound Proxy</title>
+  <meta name="description" content="Control plane and observability dashboard for SecretShield zero-trust credential proxy.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-shield">🛡️</div>
+        <div>
+          <h1 class="brand-title">SecretShield</h1>
+          <span class="brand-subtitle">v0.1.0 • Zero-Trust Proxy</span>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <button class="nav-item active" data-tab="overview" id="nav-overview">
+          <span class="icon">📊</span> Overview
+        </button>
+        <button class="nav-item" data-tab="vault" id="nav-vault">
+          <span class="icon">🔐</span> Vault & Profiles
+        </button>
+        <button class="nav-item" data-tab="budgets" id="nav-budgets">
+          <span class="icon">💰</span> Budgets & Quotas
+        </button>
+        <button class="nav-item" data-tab="audit" id="nav-audit">
+          <span class="icon">⛓️</span> Hash-Chained Audit
+        </button>
+        <button class="nav-item" data-tab="playground" id="nav-playground">
+          <span class="icon">⚡</span> Request Playground
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <div class="status-indicator">
+          <span class="pulse-dot"></span>
+          <span>Proxy Engine Running</span>
+        </div>
+        <div class="cipher-tag">AES-256-GCM Envelope</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="header-left">
+          <h2 id="page-title">Real-Time Proxy Overview</h2>
+        </div>
+        <div class="header-actions">
+          <span class="badge badge-cipher" id="vault-status-badge">Vault Encrypted</span>
+          <button class="btn btn-outline" id="btn-refresh" title="Refresh Telemetry">🔄 Refresh</button>
+          <a href="/metrics" target="_blank" class="btn btn-outline" id="btn-prom-metrics">📈 Prometheus</a>
+        </div>
+      </header>
+
+      <!-- TAB 1: OVERVIEW -->
+      <section id="tab-overview" class="tab-pane active">
+        <!-- Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Active Profiles</span>
+            <span class="stat-value" id="stat-profiles">-</span>
+            <span class="stat-sub">Configured upstream APIs</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Total Proxied Requests</span>
+            <span class="stat-value" id="stat-requests">-</span>
+            <span class="stat-sub">Recent telemetry stream</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Cache Hit Ratio</span>
+            <span class="stat-value" id="stat-cache">-</span>
+            <span class="stat-sub" id="stat-cache-sub">0 hits / 0 misses</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Audit Ledger Status</span>
+            <span class="stat-value text-success" id="stat-audit-status">VERIFIED</span>
+            <span class="stat-sub">SHA-256 Hash Chain Intact</span>
+          </div>
+        </div>
+
+        <!-- Live Traffic and Alerts split -->
+        <div class="dashboard-grid">
+          <div class="card card-table">
+            <div class="card-header">
+              <h3>Live Request Stream</h3>
+              <span class="live-pill">LIVE</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-live-stream">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Service</th>
+                    <th>Profile</th>
+                    <th>Method</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Cost</th>
+                  </tr>
+                </thead>
+                <tbody id="stream-body">
+                  <tr><td colspan="7" class="text-center text-muted">Awaiting traffic...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Sidebar Panels: Budgets & Alerts -->
+          <div class="side-panels">
+            <div class="card">
+              <div class="card-header">
+                <h3>Service Daily Quotas</h3>
+              </div>
+              <div id="overview-budgets-list" class="budgets-list">
+                <p class="text-muted">No active budget limits configured.</p>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3>Security & DLP Alerts</h3>
+              </div>
+              <div id="overview-alerts-list" class="alerts-list">
+                <div class="alert-clean">✅ Zero Security Violations Detected</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: VAULT & PROFILES -->
+      <section id="tab-vault" class="tab-pane">
+        <div class="card card-table">
+          <div class="card-header">
+            <h3>Encrypted Credential Profiles</h3>
+            <button class="btn btn-primary" id="btn-open-create-profile">+ New Profile</button>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-profiles">
+              <thead>
+                <tr>
+                  <th>Profile Name</th>
+                  <th>Target Base URL</th>
+                  <th>Domains / Host</th>
+                  <th>Type</th>
+                  <th>Version</th>
+                  <th>Secret Preview</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="profiles-body">
+                <tr><td colspan="8" class="text-center text-muted">Loading vault profiles...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: BUDGETS & QUOTAS -->
+      <section id="tab-budgets" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h3>Service Financial Budgets & Rate Limits</h3>
+          </div>
+          <div id="full-budgets-view" class="budgets-grid">
+            <p class="text-muted">Loading budgets...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: AUDIT EXPLORER -->
+      <section id="tab-audit" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h3>Immutable Cryptographic Ledger</h3>
+            <button class="btn btn-success" id="btn-verify-audit-chain">🔍 Verify SHA-256 Chain</button>
+          </div>
+          <div id="audit-verify-banner" class="verify-banner" style="display:none;"></div>
+          <div class="table-responsive">
+            <table class="data-table" id="table-audit-ledger">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Timestamp</th>
+                  <th>Service</th>
+                  <th>Endpoint</th>
+                  <th>Status</th>
+                  <th>Cost (USD)</th>
+                  <th>Block Hash (SHA-256)</th>
+                  <th>Prev Hash</th>
+                </tr>
+              </thead>
+              <tbody id="audit-body">
+                <tr><td colspan="8" class="text-center text-muted">Loading audit entries...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: PLAYGROUND -->
+      <section id="tab-playground" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h3>Interactive Request Simulator</h3>
+            <span class="text-muted">Test credential injection directly in browser</span>
+          </div>
+          <div class="playground-form">
+            <div class="form-row">
+              <div class="form-group col-3">
+                <label for="pg-method">HTTP Method</label>
+                <select id="pg-method" class="form-control">
+                  <option value="GET">GET</option>
+                  <option value="POST" selected>POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                </select>
+              </div>
+              <div class="form-group col-4">
+                <label for="pg-profile">Target Profile</label>
+                <input type="text" id="pg-profile" class="form-control" placeholder="e.g. stripe-test">
+              </div>
+              <div class="form-group col-5">
+                <label for="pg-path">Subpath</label>
+                <input type="text" id="pg-path" class="form-control" placeholder="e.g. v1/charges" value="v1/charges">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="pg-service-id">X-Service-Id</label>
+                <input type="text" id="pg-service-id" class="form-control" value="demo-client">
+              </div>
+              <div class="form-group col-6">
+                <label for="pg-service-token">X-Service-Token (Optional)</label>
+                <input type="text" id="pg-service-token" class="form-control" placeholder="JWT or service token">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="pg-body">Request Body (JSON)</label>
+              <textarea id="pg-body" class="form-control code-font" rows="4">{"amount": 2500, "currency": "usd"}</textarea>
+            </div>
+
+            <button class="btn btn-primary" id="btn-send-sim">🚀 Send Proxied Request</button>
+
+            <div class="playground-result" id="pg-result-box" style="display:none;">
+              <h4>Response Result <span id="pg-result-status" class="badge"></span> <span id="pg-result-time" class="text-muted"></span></h4>
+              <pre id="pg-result-content" class="code-box"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Create Profile Modal -->
+  <div class="modal-overlay" id="modal-create-profile" style="display:none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Create Encrypted Credential Profile</h3>
+        <button class="btn-close" id="btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-name">Profile Name</label>
+          <input type="text" id="modal-name" class="form-control" placeholder="e.g. stripe-prod">
+        </div>
+        <div class="form-group">
+          <label for="modal-base-url">Upstream Base URL</label>
+          <input type="text" id="modal-base-url" class="form-control" placeholder="https://api.stripe.com">
+        </div>
+        <div class="form-group">
+          <label for="modal-secret">API Secret / Token (Encrypted with AES-256-GCM)</label>
+          <input type="password" id="modal-secret" class="form-control" placeholder="sk_live_...">
+        </div>
+        <div class="form-row">
+          <div class="form-group col-6">
+            <label for="modal-type">Injection Type</label>
+            <select id="modal-type" class="form-control">
+              <option value="bearer">Bearer Token</option>
+              <option value="header">Custom Header</option>
+              <option value="basic">Basic Auth</option>
+            </select>
+          </div>
+          <div class="form-group col-6">
+            <label for="modal-header-name">Header Name</label>
+            <input type="text" id="modal-header-name" class="form-control" value="Authorization">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btn-cancel-modal">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-modal">Save Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
