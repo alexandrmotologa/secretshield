@@ -1,11 +1,13 @@
 """Audit record schema definitions."""
 
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class AuditEntry(BaseModel):
     """Immutable audit record representing a proxied request."""
+
     id: int
     timestamp: str
     service_id: str
@@ -16,6 +18,6 @@ class AuditEntry(BaseModel):
     latency_ms: float
     cost_usd: float
     client_ip: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     prev_hash: str
     record_hash: str

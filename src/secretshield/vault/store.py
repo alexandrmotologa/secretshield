@@ -1,10 +1,11 @@
 """SQLite-backed encrypted credential profile repository."""
 
-from datetime import datetime, timezone
+import json
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import json
+from typing import Any
+
 import aiosqlite
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,7 @@ from secretshield.vault.cipher import VaultCipher
 
 class InjectionType(str, Enum):
     """How the secret is injected into the outbound request."""
+
     BEARER = "bearer"
     HEADER = "header"
     BASIC = "basic"
@@ -21,26 +23,28 @@ class InjectionType(str, Enum):
 
 class CredentialProfile(BaseModel):
     """Internal model for an encrypted credential profile."""
+
     name: str
     base_url: str
     injection_type: InjectionType = InjectionType.BEARER
     header_name: str = "Authorization"
     header_prefix: str = "Bearer "
-    query_param: Optional[str] = None
+    query_param: str | None = None
     encrypted_secret: bytes
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str
     updated_at: str
 
 
 class ProfileView(BaseModel):
     """Sanitized profile view safe for listing and CLI output."""
+
     name: str
     base_url: str
     injection_type: InjectionType
     header_name: str
     header_prefix: str
-    query_param: Optional[str] = None
+    query_param: str | None = None
     secret_preview: str
     created_at: str
     updated_at: str
@@ -92,8 +96,8 @@ class VaultStore:
         injection_type: InjectionType = InjectionType.BEARER,
         header_name: str = "Authorization",
         header_prefix: str = "Bearer ",
-        query_param: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        query_param: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> CredentialProfile:
         """Store or update an encrypted profile.
 
@@ -111,7 +115,7 @@ class VaultStore:
             The stored CredentialProfile object.
         """
         await self.init_db()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         encrypted_secret = self.cipher.encrypt(secret, context=name)
         meta_json = json.dumps(metadata or {})
 
@@ -167,77 +171,81 @@ class VaultStore:
             updated_at=now,
         )
 
-    async def get_profile(self, name: str) -> Optional[CredentialProfile]:
+    async def get_profile(self, name: str) -> CredentialProfile | None:
         """Fetch a credential profile by name."""
         await self.init_db()
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute(
                 """
                 SELECT name, base_url, injection_type, header_name, header_prefix,
                        query_param, encrypted_secret, metadata, created_at, updated_at
                 FROM vault_profiles WHERE name = ?
                 """,
                 (name,),
-            ) as cursor:
-                row = await cursor.fetchone()
-                if not row:
-                    return None
+            ) as cursor,
+        ):
+            row = await cursor.fetchone()
+            if not row:
+                return None
 
-                return CredentialProfile(
-                    name=row[0],
-                    base_url=row[1],
-                    injection_type=InjectionType(row[2]),
-                    header_name=row[3],
-                    header_prefix=row[4],
-                    query_param=row[5],
-                    encrypted_secret=row[6],
-                    metadata=json.loads(row[7]),
-                    created_at=row[8],
-                    updated_at=row[9],
-                )
+            return CredentialProfile(
+                name=row[0],
+                base_url=row[1],
+                injection_type=InjectionType(row[2]),
+                header_name=row[3],
+                header_prefix=row[4],
+                query_param=row[5],
+                encrypted_secret=row[6],
+                metadata=json.loads(row[7]),
+                created_at=row[8],
+                updated_at=row[9],
+            )
 
-    async def get_decrypted_secret(self, name: str) -> Optional[str]:
+    async def get_decrypted_secret(self, name: str) -> str | None:
         """Fetch and decrypt the secret for a profile."""
         profile = await self.get_profile(name)
         if not profile:
             return None
         return self.cipher.decrypt(profile.encrypted_secret, context=name)
 
-    async def list_profiles(self) -> List[ProfileView]:
+    async def list_profiles(self) -> list[ProfileView]:
         """List all profiles with masked secret previews."""
         await self.init_db()
-        results: List[ProfileView] = []
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
+        results: list[ProfileView] = []
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute(
                 """
                 SELECT name, base_url, injection_type, header_name, header_prefix,
                        query_param, encrypted_secret, created_at, updated_at
                 FROM vault_profiles ORDER BY name ASC
                 """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                for row in rows:
-                    name = row[0]
-                    encrypted = row[6]
-                    try:
-                        secret = self.cipher.decrypt(encrypted, context=name)
-                        preview = mask_secret(secret)
-                    except Exception:
-                        preview = "[decryption_error]"
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
+            for row in rows:
+                name = row[0]
+                encrypted = row[6]
+                try:
+                    secret = self.cipher.decrypt(encrypted, context=name)
+                    preview = mask_secret(secret)
+                except Exception:
+                    preview = "[decryption_error]"
 
-                    results.append(
-                        ProfileView(
-                            name=name,
-                            base_url=row[1],
-                            injection_type=InjectionType(row[2]),
-                            header_name=row[3],
-                            header_prefix=row[4],
-                            query_param=row[5],
-                            secret_preview=preview,
-                            created_at=row[7],
-                            updated_at=row[8],
-                        )
+                results.append(
+                    ProfileView(
+                        name=name,
+                        base_url=row[1],
+                        injection_type=InjectionType(row[2]),
+                        header_name=row[3],
+                        header_prefix=row[4],
+                        query_param=row[5],
+                        secret_preview=preview,
+                        created_at=row[7],
+                        updated_at=row[8],
                     )
+                )
         return results
 
     async def delete_profile(self, name: str) -> bool:

@@ -1,0 +1,23 @@
+services:
+  secretshield:
+    build: .
+    container_name: secretshield-proxy
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRETSHIELD_HOST=0.0.0.0
+      - SECRETSHIELD_PORT=8000
+      - SECRETSHIELD_MASTER_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - SECRETSHIELD_DATA_DIR=/app/data
+      - SECRETSHIELD_LOG_LEVEL=INFO
+    volumes:
+      - secretshield_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  secretshield_data:

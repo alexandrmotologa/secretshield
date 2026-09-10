@@ -1,6 +1,7 @@
 """Unit tests for CircuitBreaker and CircuitBreakerRegistry."""
 
 import pytest
+
 from secretshield.proxy.resilience import (
     CircuitBreaker,
     CircuitBreakerOpenError,

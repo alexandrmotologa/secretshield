@@ -1,11 +1,12 @@
 """Unit tests for BudgetLimiter and CostEstimator."""
 
 import pytest
+
 from secretshield.policy.budget_limiter import (
-    BudgetLimiter,
-    ServiceBudget,
     BudgetExceededError,
+    BudgetLimiter,
     RateLimitExceededError,
+    ServiceBudget,
 )
 from secretshield.policy.cost_models import CostEstimator
 
@@ -15,8 +16,8 @@ def test_cost_estimator_ai_tokens():
     response_payload = {
         "model": "gpt-4o-2024-05-13",
         "usage": {
-            "prompt_tokens": 1000,      # 1000 / 1M * $2.50 = $0.0025
-            "completion_tokens": 500,   # 500 / 1M * $10.00 = $0.0050
+            "prompt_tokens": 1000,  # 1000 / 1M * $2.50 = $0.0025
+            "completion_tokens": 500,  # 500 / 1M * $10.00 = $0.0050
             "total_tokens": 1500,
         },
     }

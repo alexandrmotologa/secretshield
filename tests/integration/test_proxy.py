@@ -2,11 +2,13 @@
 
 import os
 from pathlib import Path
+
 import httpx
 import pytest
+
 from secretshield.proxy.forwarder import ProxyForwarder
 from secretshield.vault.cipher import VaultCipher
-from secretshield.vault.store import VaultStore, InjectionType
+from secretshield.vault.store import InjectionType, VaultStore
 
 
 @pytest.fixture
@@ -59,7 +61,7 @@ async def test_proxy_injects_credentials_to_mock_upstream(store: VaultStore):
             "Content-Type": "application/json",
         }
 
-        status, headers, stream, latency = await forwarder.forward(
+        status, _headers, stream, latency = await forwarder.forward(
             profile_name="stripe-test",
             path="v1/charges",
             method="POST",
@@ -73,6 +75,7 @@ async def test_proxy_injects_credentials_to_mock_upstream(store: VaultStore):
         # Read response stream
         body = b"".join([chunk async for chunk in stream])
         import json
+
         resp_data = json.loads(body)
         assert resp_data["status"] == "charge_created"
         assert resp_data["id"] == "ch_123"

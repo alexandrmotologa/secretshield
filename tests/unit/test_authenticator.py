@@ -1,7 +1,8 @@
 """Unit tests for TokenAuthenticator."""
 
 import pytest
-from secretshield.policy.authenticator import TokenAuthenticator, AuthenticationError
+
+from secretshield.policy.authenticator import AuthenticationError, TokenAuthenticator
 
 
 @pytest.fixture

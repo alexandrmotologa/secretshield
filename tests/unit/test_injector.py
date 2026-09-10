@@ -4,7 +4,9 @@ from secretshield.proxy.injector import CredentialInjector
 from secretshield.vault.store import CredentialProfile, InjectionType
 
 
-def make_test_profile(injection_type: InjectionType, header_name="Authorization", prefix="Bearer ") -> CredentialProfile:
+def make_test_profile(
+    injection_type: InjectionType, header_name="Authorization", prefix="Bearer "
+) -> CredentialProfile:
     return CredentialProfile(
         name="test-profile",
         base_url="https://api.upstream.com",
@@ -66,6 +68,7 @@ def test_basic_auth_injection():
 
     # base64 of 'api_user:secret_pass_123'
     import base64
+
     expected_b64 = base64.b64encode(b"api_user:secret_pass_123").decode("ascii")
     assert outbound["Authorization"] == f"Basic {expected_b64}"
 

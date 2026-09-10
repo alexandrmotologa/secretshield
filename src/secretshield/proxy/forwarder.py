@@ -1,9 +1,9 @@
 """Streaming outbound HTTP proxy forwarder."""
 
-from typing import AsyncIterator, Dict, Optional, Tuple
+from collections.abc import AsyncIterator
+
 import httpx
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
 
 from secretshield.proxy.injector import CredentialInjector
 from secretshield.proxy.resilience import CircuitBreakerOpenError, CircuitBreakerRegistry
@@ -28,7 +28,7 @@ class ProxyForwarder:
     def __init__(
         self,
         vault_store: VaultStore,
-        circuit_registry: Optional[CircuitBreakerRegistry] = None,
+        circuit_registry: CircuitBreakerRegistry | None = None,
         timeout: float = 30.0,
         max_connections: int = 100,
     ):
@@ -50,11 +50,11 @@ class ProxyForwarder:
         profile_name: str,
         path: str,
         method: str,
-        headers: Dict[str, str],
-        query_params: Optional[Dict[str, str]] = None,
-        content: Optional[bytes] = None,
-        stream_content: Optional[AsyncIterator[bytes]] = None,
-    ) -> Tuple[int, Dict[str, str], AsyncIterator[bytes], float]:
+        headers: dict[str, str],
+        query_params: dict[str, str] | None = None,
+        content: bytes | None = None,
+        stream_content: AsyncIterator[bytes] | None = None,
+    ) -> tuple[int, dict[str, str], AsyncIterator[bytes], float]:
         """Forward downstream request to upstream target.
 
         Args:
@@ -108,6 +108,7 @@ class ProxyForwarder:
         )
 
         import time
+
         start_time = time.monotonic()
 
         try:
@@ -129,7 +130,7 @@ class ProxyForwarder:
                 circuit_breaker.record_success()
 
             # Filter response headers
-            clean_headers: Dict[str, str] = {
+            clean_headers: dict[str, str] = {
                 k: v
                 for k, v in upstream_response.headers.items()
                 if k.lower() not in HOP_BY_HOP_HEADERS
@@ -154,5 +155,5 @@ class ProxyForwarder:
             latency_ms = (time.monotonic() - start_time) * 1000.0
             raise HTTPException(
                 status_code=502,
-                detail=f"Bad Gateway: upstream request failed ({type(exc).__name__}: {str(exc)})",
+                detail=f"Bad Gateway: upstream request failed ({type(exc).__name__}: {exc!s})",
             ) from exc

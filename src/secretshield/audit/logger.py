@@ -1,14 +1,15 @@
 """Cryptographically hash-chained immutable audit logger using SQLite."""
 
-from datetime import datetime, timezone
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import aiosqlite
+
 from secretshield.audit.schema import AuditEntry
 from secretshield.proxy.redactor import SecretRedactor
-
 
 GENESIS_HASH = "0" * 64
 
@@ -36,7 +37,7 @@ class AuditLogger:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self._last_hash: Optional[str] = None
+        self._last_hash: str | None = None
 
     async def init_db(self) -> None:
         """Initialize audit table and recover last block hash."""
@@ -84,14 +85,14 @@ class AuditLogger:
         latency_ms: float,
         cost_usd: float,
         client_ip: str = "127.0.0.1",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AuditEntry:
         """Append a sanitized, hash-chained record to the audit ledger."""
         await self.init_db()
 
         # Sanitize metadata
         clean_metadata = SecretRedactor.redact_json(metadata or {})
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         prev_hash = self._last_hash or GENESIS_HASH
 
         record_hash = calculate_record_hash(
@@ -152,12 +153,13 @@ class AuditLogger:
             record_hash=record_hash,
         )
 
-    async def get_recent_entries(self, limit: int = 50) -> List[AuditEntry]:
+    async def get_recent_entries(self, limit: int = 50) -> list[AuditEntry]:
         """Fetch the most recent audit records."""
         await self.init_db()
-        records: List[AuditEntry] = []
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
+        records: list[AuditEntry] = []
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute(
                 """
                 SELECT id, timestamp, service_id, profile_name, method, path,
                        status_code, latency_ms, cost_usd, client_ip, metadata,
@@ -165,24 +167,25 @@ class AuditLogger:
                 FROM audit_ledger ORDER BY id DESC LIMIT ?
                 """,
                 (limit,),
-            ) as cursor:
-                rows = await cursor.fetchall()
-                for row in rows:
-                    records.append(
-                        AuditEntry(
-                            id=row[0],
-                            timestamp=row[1],
-                            service_id=row[2],
-                            profile_name=row[3],
-                            method=row[4],
-                            path=row[5],
-                            status_code=row[6],
-                            latency_ms=row[7],
-                            cost_usd=row[8],
-                            client_ip=row[9],
-                            metadata=json.loads(row[10]),
-                            prev_hash=row[11],
-                            record_hash=row[12],
-                        )
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
+            for row in rows:
+                records.append(
+                    AuditEntry(
+                        id=row[0],
+                        timestamp=row[1],
+                        service_id=row[2],
+                        profile_name=row[3],
+                        method=row[4],
+                        path=row[5],
+                        status_code=row[6],
+                        latency_ms=row[7],
+                        cost_usd=row[8],
+                        client_ip=row[9],
+                        metadata=json.loads(row[10]),
+                        prev_hash=row[11],
+                        record_hash=row[12],
                     )
+                )
         return records

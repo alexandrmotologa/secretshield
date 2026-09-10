@@ -2,7 +2,6 @@
 
 import time
 from enum import Enum
-from typing import Dict
 
 
 class CircuitState(str, Enum):
@@ -66,7 +65,10 @@ class CircuitBreaker:
         """Record a failed upstream request (network failure or 5xx response)."""
         self._consecutive_failures += 1
         self._last_state_change = time.monotonic()
-        if self._state == CircuitState.HALF_OPEN or self._consecutive_failures >= self.failure_threshold:
+        if (
+            self._state == CircuitState.HALF_OPEN
+            or self._consecutive_failures >= self.failure_threshold
+        ):
             self._state = CircuitState.OPEN
 
 
@@ -76,7 +78,7 @@ class CircuitBreakerRegistry:
     def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 30.0):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        self._breakers: Dict[str, CircuitBreaker] = {}
+        self._breakers: dict[str, CircuitBreaker] = {}
 
     def get(self, profile_name: str) -> CircuitBreaker:
         """Get or create circuit breaker for profile."""

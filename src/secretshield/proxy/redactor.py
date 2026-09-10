@@ -2,7 +2,8 @@
 
 import math
 import re
-from typing import Any, Dict, List, Pattern, Tuple
+from re import Pattern
+from typing import Any
 
 
 def is_luhn_valid(card_number_str: str) -> bool:
@@ -30,7 +31,7 @@ def calculate_shannon_entropy(data: str) -> float:
 
     entropy = 0.0
     length = len(data)
-    frequencies: Dict[str, int] = {}
+    frequencies: dict[str, int] = {}
     for char in data:
         frequencies[char] = frequencies.get(char, 0) + 1
 
@@ -45,7 +46,7 @@ class SecretRedactor:
     """Detects and masks API keys, payment card numbers, and high-entropy strings."""
 
     # Pre-compiled regex patterns for known providers
-    KNOWN_PATTERNS: List[Tuple[Pattern[str], str]] = [
+    KNOWN_PATTERNS: list[tuple[Pattern[str], str]] = [
         # Stripe
         (re.compile(r"\b(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,}\b"), "[REDACTED_STRIPE_KEY]"),
         # OpenAI
@@ -71,7 +72,9 @@ class SecretRedactor:
     CARD_CANDIDATE_REGEX = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
 
     # High entropy candidate pattern (words of 24+ chars including common password/token symbols)
-    HIGH_ENTROPY_CANDIDATE_REGEX = re.compile(r"(?:\b|(?<=[\s\"':=]))[A-Za-z0-9+/=_\-\$#@!]{24,}(?:\b|(?=[\s\"',;]))")
+    HIGH_ENTROPY_CANDIDATE_REGEX = re.compile(
+        r"(?:\b|(?<=[\s\"':=]))[A-Za-z0-9+/=_\-\$#@!]{24,}(?:\b|(?=[\s\"',;]))"
+    )
 
     # Entropy threshold (standard english text is ~3.0 - 3.8, random secrets are > 4.5)
     ENTROPY_THRESHOLD = 4.6
@@ -110,6 +113,7 @@ class SecretRedactor:
 
         # 3. Shannon entropy check for unknown high-entropy secrets
         if check_entropy:
+
             def entropy_replacement(match: re.Match[str]) -> str:
                 candidate = match.group(0)
                 # Don't re-redact already replaced tags
@@ -124,9 +128,9 @@ class SecretRedactor:
         return text
 
     @classmethod
-    def redact_headers(cls, headers: Dict[str, str]) -> Dict[str, str]:
+    def redact_headers(cls, headers: dict[str, str]) -> dict[str, str]:
         """Mask sensitive HTTP headers."""
-        clean: Dict[str, str] = {}
+        clean: dict[str, str] = {}
         for key, value in headers.items():
             if key.lower() in cls.SENSITIVE_HEADERS:
                 clean[key] = "[REDACTED_HEADER_VALUE]"

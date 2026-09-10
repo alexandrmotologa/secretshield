@@ -2,9 +2,11 @@
 
 import os
 from pathlib import Path
+
 import pytest
+
 from secretshield.vault.cipher import VaultCipher
-from secretshield.vault.store import VaultStore, InjectionType, mask_secret
+from secretshield.vault.store import InjectionType, VaultStore, mask_secret
 
 
 @pytest.fixture

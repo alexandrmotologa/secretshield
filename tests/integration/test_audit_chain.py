@@ -1,8 +1,10 @@
 """Integration tests for hash-chained audit ledger and tamper detection."""
 
 from pathlib import Path
+
 import aiosqlite
 import pytest
+
 from secretshield.audit.logger import AuditLogger
 from secretshield.audit.verifier import AuditChainVerifier
 

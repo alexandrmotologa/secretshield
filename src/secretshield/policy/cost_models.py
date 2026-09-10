@@ -1,6 +1,6 @@
 """Cost estimation models for AI providers and fixed-fee APIs."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class CostEstimator:
@@ -18,9 +18,9 @@ class CostEstimator:
 
     # Fixed fee per successful transaction/call
     FIXED_FEES = {
-        "stripe": 0.30,       # $0.30 per payment charge
-        "twilio": 0.0079,     # $0.0079 per SMS
-        "sendgrid": 0.001,    # $0.001 per email
+        "stripe": 0.30,  # $0.30 per payment charge
+        "twilio": 0.0079,  # $0.0079 per SMS
+        "sendgrid": 0.001,  # $0.001 per email
     }
 
     DEFAULT_FALLBACK_COST = 0.0005  # $0.0005 default per proxy request
@@ -29,8 +29,8 @@ class CostEstimator:
     def estimate_from_response(
         cls,
         profile_name: str,
-        response_json: Optional[Dict[str, Any]] = None,
-        default_cost: Optional[float] = None,
+        response_json: dict[str, Any] | None = None,
+        default_cost: float | None = None,
     ) -> float:
         """Estimate cost from response JSON or provider defaults.
 
@@ -51,7 +51,9 @@ class CostEstimator:
 
             if isinstance(usage, dict):
                 prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-                completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+                completion_tokens = (
+                    usage.get("completion_tokens") or usage.get("output_tokens") or 0
+                )
 
                 # Match model pricing
                 for known_model, (in_cost, out_cost) in cls.AI_MODELS.items():

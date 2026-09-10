@@ -1,7 +1,7 @@
 """Zero-Trust microservice caller authentication with HMAC JWT and pre-shared keys."""
 
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+
 import jwt
 from pydantic import BaseModel
 
@@ -12,9 +12,10 @@ class AuthenticationError(Exception):
 
 class CallerIdentity(BaseModel):
     """Verified identity of the calling microservice."""
+
     service_id: str
-    scopes: List[str] = []
-    metadata: Dict[str, str] = {}
+    scopes: list[str] = []
+    metadata: dict[str, str] = {}
 
 
 class TokenAuthenticator:
@@ -23,7 +24,7 @@ class TokenAuthenticator:
     def __init__(
         self,
         jwt_secret: str,
-        static_service_keys: Optional[Dict[str, str]] = None,
+        static_service_keys: dict[str, str] | None = None,
         default_token_ttl_seconds: int = 3600,
     ):
         self.jwt_secret = jwt_secret
@@ -33,11 +34,11 @@ class TokenAuthenticator:
     def issue_service_token(
         self,
         service_id: str,
-        scopes: Optional[List[str]] = None,
-        ttl_seconds: Optional[int] = None,
+        scopes: list[str] | None = None,
+        ttl_seconds: int | None = None,
     ) -> str:
         """Issue a short-lived internal HMAC-SHA256 JWT for a microservice."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ttl = ttl_seconds if ttl_seconds is not None else self.default_token_ttl
         payload = {
             "sub": service_id,
@@ -50,8 +51,8 @@ class TokenAuthenticator:
 
     def authenticate(
         self,
-        service_id: Optional[str],
-        token: Optional[str],
+        service_id: str | None,
+        token: str | None,
     ) -> CallerIdentity:
         """Authenticate a microservice caller via JWT token or pre-shared key.
 
@@ -104,4 +105,4 @@ class TokenAuthenticator:
         except jwt.ExpiredSignatureError as exc:
             raise AuthenticationError("Service token has expired") from exc
         except jwt.InvalidTokenError as exc:
-            raise AuthenticationError(f"Invalid service token: {str(exc)}") from exc
+            raise AuthenticationError(f"Invalid service token: {exc!s}") from exc

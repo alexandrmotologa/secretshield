@@ -1,7 +1,7 @@
 """AES-256-GCM authenticated envelope encryption with HKDF key derivation."""
 
 import os
-from typing import Optional
+
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -45,7 +45,7 @@ class VaultCipher:
         )
         return hkdf.derive(self._master_key)
 
-    def encrypt(self, plaintext: str | bytes, context: Optional[str] = None) -> bytes:
+    def encrypt(self, plaintext: str | bytes, context: str | None = None) -> bytes:
         """Encrypt plaintext with AES-256-GCM.
 
         The payload format is:
@@ -73,7 +73,7 @@ class VaultCipher:
 
         return salt + nonce + ciphertext_with_tag
 
-    def decrypt(self, payload: bytes, context: Optional[str] = None) -> str:
+    def decrypt(self, payload: bytes, context: str | None = None) -> str:
         """Decrypt payload and verify authentication tag.
 
         Args:

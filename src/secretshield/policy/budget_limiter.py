@@ -1,9 +1,10 @@
 """Sliding-window budget limiter and rate-limiting engine."""
 
-from collections import deque
-from datetime import datetime, timezone, timedelta
 import time
-from typing import Dict, Optional, Tuple
+from collections import deque
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -23,6 +24,7 @@ class RateLimitExceededError(Exception):
 
 class ServiceBudget(BaseModel):
     """Financial budget and rate limits configured for a service."""
+
     service_id: str
     daily_limit_usd: float = Field(default=100.0, ge=0.0)
     hourly_limit_usd: float = Field(default=20.0, ge=0.0)
@@ -33,9 +35,9 @@ class BudgetLimiter:
     """Tracks per-service spending and request rates over sliding time windows."""
 
     def __init__(self):
-        self._budgets: Dict[str, ServiceBudget] = {}
+        self._budgets: dict[str, ServiceBudget] = {}
         # service_id -> deque of (monotonic_timestamp, cost_usd)
-        self._transactions: Dict[str, deque[Tuple[float, float]]] = {}
+        self._transactions: dict[str, deque[tuple[float, float]]] = {}
 
     def set_budget(self, budget: ServiceBudget) -> None:
         """Configure or update budget limits for a service."""
@@ -43,11 +45,11 @@ class BudgetLimiter:
         if budget.service_id not in self._transactions:
             self._transactions[budget.service_id] = deque()
 
-    def get_budget(self, service_id: str) -> Optional[ServiceBudget]:
+    def get_budget(self, service_id: str) -> ServiceBudget | None:
         """Retrieve budget configuration for service."""
         return self._budgets.get(service_id)
 
-    def _prune_old_transactions(self, service_id: str, now: float) -> deque[Tuple[float, float]]:
+    def _prune_old_transactions(self, service_id: str, now: float) -> deque[tuple[float, float]]:
         """Remove transactions older than 24 hours (86,400 seconds)."""
         txs = self._transactions.get(service_id)
         if txs is None:
@@ -125,7 +127,7 @@ class BudgetLimiter:
         txs = self._prune_old_transactions(service_id, now)
         txs.append((now, max(cost_usd, 0.0)))
 
-    def get_metrics(self, service_id: str) -> Dict[str, float]:
+    def get_metrics(self, service_id: str) -> dict[str, float]:
         """Get current spending totals and percentage consumed."""
         budget = self._budgets.get(service_id)
         if not budget:
@@ -145,8 +147,12 @@ class BudgetLimiter:
         spend_1h = sum(cost for ts, cost in txs if ts >= cutoff_1h)
         spend_24h = sum(cost for _, cost in txs)
 
-        hourly_pct = (spend_1h / budget.hourly_limit_usd * 100.0) if budget.hourly_limit_usd > 0 else 0.0
-        daily_pct = (spend_24h / budget.daily_limit_usd * 100.0) if budget.daily_limit_usd > 0 else 0.0
+        hourly_pct = (
+            (spend_1h / budget.hourly_limit_usd * 100.0) if budget.hourly_limit_usd > 0 else 0.0
+        )
+        daily_pct = (
+            (spend_24h / budget.daily_limit_usd * 100.0) if budget.daily_limit_usd > 0 else 0.0
+        )
 
         return {
             "hourly_spent": spend_1h,
@@ -158,10 +164,10 @@ class BudgetLimiter:
         }
 
     @staticmethod
-    def format_rfc7807_problem(exc: Exception, instance_path: str) -> Dict[str, Any]:
+    def format_rfc7807_problem(exc: Exception, instance_path: str) -> dict[str, Any]:
         """Format RFC 7807 Problem Details JSON for HTTP 429 response."""
-        now_iso = datetime.now(timezone.utc).isoformat()
-        reset_time = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
+        reset_time = (datetime.now(UTC) + timedelta(minutes=15)).isoformat()
 
         if isinstance(exc, BudgetExceededError):
             return {

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
 
     # Base paths
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
     # Master encryption key (32 bytes hex-encoded, 64 chars)
     master_key: str = Field(
         default="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        description="Master encryption key as 32-byte hex string (64 characters)"
+        description="Master encryption key as 32-byte hex string (64 characters)",
     )
 
     # Server configuration
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
     # Zero-Trust auth secret for internal service JWT verification
     jwt_secret: str = Field(
         default="secretshield-internal-service-hmac-secret-key-32b",
-        description="HMAC secret used for internal service JWT signing and verification"
+        description="HMAC secret used for internal service JWT signing and verification",
     )
 
     # Proxy behavior

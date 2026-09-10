@@ -1,7 +1,7 @@
 """Outbound credential injector supporting Bearer, custom headers, Basic auth, and query params."""
 
 import base64
-from typing import Dict, Optional, Tuple
+
 from secretshield.vault.store import CredentialProfile, InjectionType
 
 # Headers that must be stripped from downstream client requests before forwarding
@@ -19,10 +19,10 @@ class CredentialInjector:
 
     @staticmethod
     def prepare_headers(
-        inbound_headers: Dict[str, str],
+        inbound_headers: dict[str, str],
         profile: CredentialProfile,
         decrypted_secret: str,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Sanitize inbound headers and inject upstream credentials.
 
         Args:
@@ -34,10 +34,8 @@ class CredentialInjector:
             Cleaned and credential-injected dictionary of headers.
         """
         # Normalize header keys to lowercase for stripping
-        outbound_headers: Dict[str, str] = {
-            k: v
-            for k, v in inbound_headers.items()
-            if k.lower() not in STRIP_INBOUND_HEADERS
+        outbound_headers: dict[str, str] = {
+            k: v for k, v in inbound_headers.items() if k.lower() not in STRIP_INBOUND_HEADERS
         }
 
         # Apply credential injection based on profile type
@@ -59,9 +57,9 @@ class CredentialInjector:
     def prepare_url(
         profile: CredentialProfile,
         path: str,
-        query_params: Optional[Dict[str, str]] = None,
-        decrypted_secret: Optional[str] = None,
-    ) -> Tuple[str, Dict[str, str]]:
+        query_params: dict[str, str] | None = None,
+        decrypted_secret: str | None = None,
+    ) -> tuple[str, dict[str, str]]:
         """Construct full target URL and query parameters.
 
         Args:
@@ -78,7 +76,11 @@ class CredentialInjector:
         full_url = f"{base}/{clean_path}" if clean_path else base
 
         params = dict(query_params or {})
-        if profile.injection_type == InjectionType.QUERY and profile.query_param and decrypted_secret:
+        if (
+            profile.injection_type == InjectionType.QUERY
+            and profile.query_param
+            and decrypted_secret
+        ):
             params[profile.query_param] = decrypted_secret
 
         return full_url, params

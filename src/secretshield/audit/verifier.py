@@ -1,8 +1,9 @@
 """Verification utility for audit ledger cryptographic hash chain."""
 
 from pathlib import Path
-from typing import Optional, Tuple
+
 import aiosqlite
+
 from secretshield.audit.logger import GENESIS_HASH, calculate_record_hash
 
 
@@ -10,7 +11,7 @@ class AuditChainVerifier:
     """Validates the linear cryptographic chain of SQLite audit records."""
 
     @staticmethod
-    async def verify_chain(db_path: Path) -> Tuple[bool, Optional[str], int]:
+    async def verify_chain(db_path: Path) -> tuple[bool, str | None, int]:
         """Verify the integrity of the entire audit database.
 
         Returns:

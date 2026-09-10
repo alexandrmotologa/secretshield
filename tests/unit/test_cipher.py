@@ -1,11 +1,13 @@
 """Unit tests for AES-256-GCM cipher with HKDF key derivation."""
 
 import os
+
 import pytest
+
 from secretshield.vault.cipher import (
-    VaultCipher,
     DecryptionFailedError,
     InvalidPayloadError,
+    VaultCipher,
 )
 
 

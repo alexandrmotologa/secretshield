@@ -1,8 +1,9 @@
 """Unit tests for RBAC PolicyEngine."""
 
 import pytest
+
 from secretshield.policy.authenticator import CallerIdentity
-from secretshield.policy.rbac import PolicyEngine, PolicyRule, PermissionDeniedError
+from secretshield.policy.rbac import PermissionDeniedError, PolicyEngine, PolicyRule
 
 
 @pytest.fixture

@@ -1,8 +1,9 @@
 """Role-Based Access Control (RBAC) policy engine for SecretShield."""
 
 import fnmatch
-from typing import Dict, List, Optional, Tuple
+
 from pydantic import BaseModel, Field
+
 from secretshield.policy.authenticator import CallerIdentity
 
 
@@ -12,13 +13,14 @@ class PermissionDeniedError(Exception):
 
 class PolicyRule(BaseModel):
     """Declarative access rule for a microservice."""
+
     service_id: str
-    allowed_profiles: List[str] = Field(default_factory=lambda: ["*"])
-    denied_profiles: List[str] = Field(default_factory=list)
-    allowed_methods: List[str] = Field(default_factory=lambda: ["*"])
-    denied_methods: List[str] = Field(default_factory=list)
-    allowed_paths: List[str] = Field(default_factory=lambda: ["*"])
-    denied_paths: List[str] = Field(default_factory=list)
+    allowed_profiles: list[str] = Field(default_factory=lambda: ["*"])
+    denied_profiles: list[str] = Field(default_factory=list)
+    allowed_methods: list[str] = Field(default_factory=lambda: ["*"])
+    denied_methods: list[str] = Field(default_factory=list)
+    allowed_paths: list[str] = Field(default_factory=lambda: ["*"])
+    denied_paths: list[str] = Field(default_factory=list)
 
 
 class PolicyEngine:
@@ -26,13 +28,13 @@ class PolicyEngine:
 
     def __init__(self, default_deny: bool = True):
         self.default_deny = default_deny
-        self._rules: Dict[str, PolicyRule] = {}
+        self._rules: dict[str, PolicyRule] = {}
 
     def set_rule(self, rule: PolicyRule) -> None:
         """Register or update an access control rule for a service."""
         self._rules[rule.service_id] = rule
 
-    def get_rule(self, service_id: str) -> Optional[PolicyRule]:
+    def get_rule(self, service_id: str) -> PolicyRule | None:
         """Retrieve rule for a service."""
         return self._rules.get(service_id)
 
@@ -42,7 +44,7 @@ class PolicyEngine:
         profile_name: str,
         method: str,
         path: str,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Evaluate whether service_id is permitted to access the target.
 
         Evaluation order:
@@ -77,24 +79,27 @@ class PolicyEngine:
 
         # 2. Check profile allowance
         profile_matched = any(
-            fnmatch.fnmatch(profile_name, allowed)
-            for allowed in rule.allowed_profiles
+            fnmatch.fnmatch(profile_name, allowed) for allowed in rule.allowed_profiles
         )
         if not profile_matched:
-            return False, f"Profile '{profile_name}' is not in allowed list: {rule.allowed_profiles}"
+            return (
+                False,
+                f"Profile '{profile_name}' is not in allowed list: {rule.allowed_profiles}",
+            )
 
         # 3. Check method allowance
         method_matched = any(
-            fnmatch.fnmatch(normalized_method, allowed.upper())
-            for allowed in rule.allowed_methods
+            fnmatch.fnmatch(normalized_method, allowed.upper()) for allowed in rule.allowed_methods
         )
         if not method_matched:
-            return False, f"Method '{normalized_method}' is not in allowed list: {rule.allowed_methods}"
+            return (
+                False,
+                f"Method '{normalized_method}' is not in allowed list: {rule.allowed_methods}",
+            )
 
         # 4. Check path allowance
         path_matched = any(
-            fnmatch.fnmatch(normalized_path, allowed)
-            for allowed in rule.allowed_paths
+            fnmatch.fnmatch(normalized_path, allowed) for allowed in rule.allowed_paths
         )
         if not path_matched:
             return False, f"Path '{normalized_path}' is not in allowed list: {rule.allowed_paths}"
