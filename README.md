@@ -1,6 +1,20 @@
-# SecretShield
+<p align="center">
+  <img src="docs/images/logo.png?raw=true" alt="SecretShield Logo" width="130" style="border-radius: 24px;" />
+</p>
 
-Zero-Trust outbound credential proxy and dynamic token broker for microservices.
+<h1 align="center">SecretShield</h1>
+
+<p align="center">
+  <a href="https://github.com/alexandrmotologa/secretshield/actions"><img src="https://github.com/alexandrmotologa/secretshield/workflows/CI/badge.svg" alt="CI Status" /></a>
+  <a href="https://github.com/alexandrmotologa/secretshield/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+" /></a>
+  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg" alt="FastAPI" /></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff" /></a>
+</p>
+
+<p align="center">
+  <strong>Zero-Trust outbound credential proxy and dynamic token broker for microservices.</strong>
+</p>
 
 ## Overview
 
@@ -132,6 +146,21 @@ Export and import encrypted portable vault snapshots:
 secretshield vault export --output-file backup.json --passphrase "StrongBackupPassphrase123"
 secretshield vault import --input-file backup.json --passphrase "StrongBackupPassphrase123"
 ```
+
+## Web Dashboard and Telemetry
+
+SecretShield includes a single-page management console mounted directly at `/ui/`. It displays live traffic streams, budget consumption, cache metrics, and tamper verification status.
+
+### Real-Time Proxy Overview
+![SecretShield Web Dashboard Overview](docs/images/dashboard-ui.png)
+
+### Encrypted Credential Profiles
+Manage upstream profiles, key versions, and domain bindings:
+![SecretShield Vault Profiles](docs/images/vault-profiles.png)
+
+### Immutable Audit Explorer
+Inspect and cryptographically verify the SHA-256 hash-chained ledger:
+![SecretShield Audit Explorer](docs/images/audit-explorer.png)
 
 ## Architecture
 

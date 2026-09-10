@@ -117,6 +117,7 @@ async def metrics():
 
 @app.get("/")
 @app.get("/ui")
+@app.get("/ui/")
 async def serve_ui():
     """Serve the Web Dashboard HTML interface."""
     index_file = UI_DIR / "index.html"

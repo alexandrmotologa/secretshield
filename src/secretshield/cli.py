@@ -9,6 +9,13 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from secretshield.audit.logger import AuditLogger
 from secretshield.audit.verifier import AuditChainVerifier
 from secretshield.config import settings
