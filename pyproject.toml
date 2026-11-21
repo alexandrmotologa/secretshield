@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "secretshield"
-version = "0.1.0"
+version = "0.1.1"
 description = "Zero-Trust credential proxy and dynamic token broker for microservices"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -67,5 +67,6 @@ ignore = ["E501", "B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]

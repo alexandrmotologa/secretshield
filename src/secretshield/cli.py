@@ -16,6 +16,7 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
+from secretshield import __version__
 from secretshield.audit.logger import AuditLogger
 from secretshield.audit.verifier import AuditChainVerifier
 from secretshield.config import settings
@@ -41,6 +42,28 @@ app.add_typer(audit_app)
 app.add_typer(cache_app)
 
 console = Console()
+
+
+def version_callback(value: bool):
+    if value:
+        console.print(
+            f"[bold cyan]SecretShield[/bold cyan] version [bold white]{__version__}[/bold white]"
+        )
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool | None = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Show version and exit.",
+        callback=version_callback,
+        is_eager=True,
+    ),
+):
+    pass
 
 
 def get_vault_store() -> VaultStore:
@@ -437,6 +460,14 @@ def scan_command(
     if summary.has_findings and fail_on_findings:
         raise typer.Exit(code=1)
     raise typer.Exit(code=0)
+
+
+@app.command(name="version")
+def version_cmd():
+    """Show SecretShield version and exit."""
+    console.print(
+        f"[bold cyan]SecretShield[/bold cyan] version [bold white]{__version__}[/bold white]"
+    )
 
 
 if __name__ == "__main__":

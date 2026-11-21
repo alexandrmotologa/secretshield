@@ -16,6 +16,10 @@
   <strong>Zero-Trust outbound credential proxy and dynamic token broker for microservices.</strong>
 </p>
 
+<p align="center">
+  <img src="docs/images/secretshield_demo.gif" alt="SecretShield Interactive Demo" width="100%" />
+</p>
+
 ## Overview
 
 Microservices often need access to third-party APIs such as Stripe, OpenAI, Anthropic, or AWS. Giving each service direct access to production secrets introduces credential sprawl, risks accidental token leakage in logs, and makes cost tracking difficult.

@@ -7,6 +7,21 @@ from secretshield.cli import app
 runner = CliRunner()
 
 
+def test_cli_version():
+    """Verify top-level CLI version options and command."""
+    res_long = runner.invoke(app, ["--version"])
+    assert res_long.exit_code == 0
+    assert "SecretShield version 0.1.1" in res_long.stdout
+
+    res_short = runner.invoke(app, ["-v"])
+    assert res_short.exit_code == 0
+    assert "SecretShield version 0.1.1" in res_short.stdout
+
+    res_cmd = runner.invoke(app, ["version"])
+    assert res_cmd.exit_code == 0
+    assert "SecretShield version 0.1.1" in res_cmd.stdout
+
+
 def test_cli_help():
     """Verify top-level CLI help outputs available subcommands."""
     result = runner.invoke(app, ["--help"])
